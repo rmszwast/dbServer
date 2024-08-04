@@ -10,6 +10,14 @@ app.listen(port, () => {
   console.log(`Listening on port ${port}`);
 });
 
+// CORS middleware
+app.use("/randnum", (req, res, next) => {
+  res.set("Access-Control-Allow-Headers", "*");
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+  next();
+});
+
 // TODO: serve homepage
 app.get("/", (req, res) => {
   res.send("Hello, world!");
@@ -25,10 +33,32 @@ app.use(express.json());
 app.post("/api/:table", async (req, res) => {
   const tbl = req.params.table.toUpperCase().replace(/-/g, "_");
   const body = await req.body;
-  const cols = Object.keys(body);
-  const vals = Object.values(body);
-  const query = `INSERT INTO ?? (${cols.map(() => "??").join(", ")}) VALUES (${vals.map(() => "?").join(" ,")});`
-  pool.query(query, [tbl, ...cols, ...vals], (error, results) => {
+  const cols = Object.keys(body).map((x) => pool.escapeId(x));
+  const vals = Object.values(body).map((x) => pool.escape(x));
+  switch (tbl) {
+    case "DEVELOPERS":
+      cols.forEach((_, i) => {
+        if (cols[i] === "`Country`") {
+          cols[i] = "`CountryId`";
+          vals[i] = `(SELECT CountryId FROM COUNTRIES WHERE Name = ${vals[i]})`;
+        }
+      });
+      break;
+    case "DEVELOPER_LANGUAGES":
+      cols.forEach((_, i) => {
+        if (cols[i] === "LanguageName") {
+          cols[i] = "`LanguageId`";
+          vals[i] = `(SELECT LanguageId FROM LANGUAGES WHERE Name = ${vals[i]})`;
+        }
+      });
+      break;
+    case "DEVELOPER_PLATFORMS":
+      break;
+    case "DEVELOPER_TECHNOLOGIES":
+      break;
+  }
+  const query = `INSERT INTO ?? (${cols.join(", ")}) VALUES (${vals.join(" ,")});`
+  pool.query(query, [tbl], (error, results) => {
     if (error) {
       res.status(400).send(error);
       return;
@@ -66,23 +96,23 @@ app.get("/api/:table/:column?", (req, res) => {
         );
         fromTbl = "DEVELOPERS AS a JOIN COUNTRIES AS b ON a.CountryId = b.CountryId";
       } 
-    break;
+      break;
     case "LANGUAGES":
       selectCol = col? col : "*";
       fromTbl = "LANGUAGES";
-    break;
+      break;
     case "PLATFORMS":
       selectCol = col? col : "*";
       fromTbl = "PLATFORMS";
-    break;
+      break;
     case "TECHNOLOGIES":
       selectCol = col? col : "*";
       fromTbl = "TECHNOLOGIES";
-    break;
+      break;
     case "COUNTRIES":
       selectCol = col? col : "*";
       fromTbl = "COUNTRIES";
-    break;
+      break;
     case "DEVELOPER_LANGUAGES":
       if (col) {
         selectCol = col;
@@ -99,7 +129,7 @@ app.get("/api/:table/:column?", (req, res) => {
           "JOIN LANGUAGES AS c ON a.LanguageId = c.LanguageId"
         );
       }
-    break;
+      break;
     case "DEVELOPER_PLATFORMS":
       if (col) {
         selectCol = col;
@@ -116,7 +146,7 @@ app.get("/api/:table/:column?", (req, res) => {
           "JOIN PLATFORMS AS c ON a.PlatformId = c.PlatformId"
         );
       }
-    break;
+      break;
     case "DEVELOPER_TECHNOLOGIES":
       if (col) {
         selectCol = col;
@@ -133,7 +163,7 @@ app.get("/api/:table/:column?", (req, res) => {
           "JOIN TECHNOLOGIES AS c ON a.TechnologyId = c.TechnologyId"
         );
       }
-    break;
+      break;
     default:
       res.setHeader("Content-Type", "application/json")
       res.status(400).send(JSON.stringify({error: "unknown resourse"}));
